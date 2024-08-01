@@ -1,4 +1,6 @@
+use flate2::read::ZlibDecoder;
 use std::fs;
+use std::io::prelude::*;
 
 pub struct Git {}
 
@@ -53,7 +55,15 @@ impl Git {
         let file_name = file_name.get(2..).unwrap_or_default();
         let file_path = format!(".git/objects/{folder_name}/{file_name}");
         if let Ok(file_content) = fs::read(file_path) {
-            println!("{:?}", file_content);
+            let mut decoder = ZlibDecoder::new(&file_content[..]);
+            let mut s = String::new();
+            decoder.read_to_string(&mut s).unwrap();
+            if let Some(split_point) = s.find('\0') {
+                let content = s.split_off(split_point + 1); // don't include \0
+                print!("{content}");
+            } else {
+                println!("File {file_name} isn't a proper file");
+            }
         } else {
             println!("Unable to read file {file_name}");
         }
