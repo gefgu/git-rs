@@ -49,7 +49,10 @@ impl Git {
     }
 
     fn read_blob_object(file_name: &str) {
-        if let Ok(file_content) = fs::read(file_name) {
+        let folder_name = file_name.get(0..2).unwrap_or_default();
+        let file_name = file_name.get(2..).unwrap_or_default();
+        let file_path = format!(".git/objects/{folder_name}/{file_name}");
+        if let Ok(file_content) = fs::read(file_path) {
             println!("{:?}", file_content);
         } else {
             println!("Unable to read file {file_name}");
