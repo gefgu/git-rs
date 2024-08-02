@@ -1,4 +1,6 @@
 use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use hex;
 use sha1::{Digest, Sha1};
 use std::fs;
@@ -50,7 +52,7 @@ impl Git {
         match args[2].as_str() {
             "-w" => {
                 if let Some(file_name) = args.get(3) {
-                    Git::write_blob_object(file_name);
+                    Git::hash_object(file_name);
                 } else {
                     println!("hash-object -w is lacking the 'file_name' argument.");
                 }
@@ -72,7 +74,7 @@ impl Git {
     }
 
     fn read_blob_object(file_name: &str) {
-        let file_path = Git::get_blob_object_file_path(file_name);
+        let file_path = Git::get_object_path_from_hash(file_name);
         if let Ok(file_content) = fs::read(file_path) {
             let mut decoder = ZlibDecoder::new(&file_content[..]);
             let mut s = String::new();
@@ -88,12 +90,16 @@ impl Git {
         }
     }
 
-    fn write_blob_object(file_name: &str) {
+    fn hash_object(file_name: &str) {
         if let Ok(file_content) = fs::read_to_string(file_name) {
             let byte_size = file_content.bytes().len();
             let content = format!("blob {byte_size}\0{file_content}");
-            let h = Git::get_hash(&content);
-            print!("{h}");
+            let hash = Git::get_hash(&content);
+
+            let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
+            let _ = e.write_all(content.as_bytes());
+            let compressed = e.finish().unwrap_or_default();
+            Git::write_blob_object(&hash, compressed);
         } else {
             println!("Unable to read file {file_name}");
         }
@@ -103,11 +109,20 @@ impl Git {
 
     // region: helper functions
 
-    fn get_blob_object_file_path(file_name: &str) -> String {
-        let folder_name = file_name.get(0..2).unwrap_or_default();
-        let file_name = file_name.get(2..).unwrap_or_default();
-        let file_path = format!(".git/objects/{folder_name}/{file_name}");
+    fn get_object_path_from_hash(hash: &str) -> String {
+        let folder_name = Git::get_object_dir_name_from_hash(hash);
+        let file_name = Git::get_object_file_name_from_hash(hash);
+        let file_path = format!("{folder_name}/{file_name}");
         return file_path;
+    }
+
+    fn get_object_dir_name_from_hash(hash: &str) -> String {
+        let header = hash.get(0..2).unwrap_or_default();
+        format!(".git/objects/{header}")
+    }
+
+    fn get_object_file_name_from_hash(hash: &str) -> &str {
+        hash.get(2..).unwrap_or_default()
     }
 
     fn get_hash(content: &str) -> String {
@@ -116,6 +131,22 @@ impl Git {
         let result = hasher.finalize();
         let hex_string = hex::encode(result);
         return hex_string;
+    }
+
+    fn write_blob_object(hash: &str, content: Vec<u8>) {
+        let object_path = Git::get_object_path_from_hash(&hash);
+        let folder = Git::get_object_dir_name_from_hash(&hash);
+
+        if let Err(_) = fs::read_dir(&folder) {
+            fs::create_dir(&folder).unwrap();
+        }
+
+        fs::write(object_path, content).unwrap();
+        // if let Ok(_) = fs::write(object_path, content) {
+        //     print!("{hash}");
+        // } else {
+        //     println!("Error creating blob object");
+        // }
     }
 
     // endregions
