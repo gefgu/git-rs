@@ -141,12 +141,11 @@ impl Git {
             fs::create_dir(&folder).unwrap();
         }
 
-        fs::write(object_path, content).unwrap();
-        // if let Ok(_) = fs::write(object_path, content) {
-        //     print!("{hash}");
-        // } else {
-        //     println!("Error creating blob object");
-        // }
+        if let Ok(_) = fs::write(object_path, content) {
+            print!("{hash}");
+        } else {
+            println!("Error creating blob object");
+        }
     }
 
     // endregions
