@@ -6,6 +6,20 @@ use sha1::{Digest, Sha1};
 use std::fs;
 use std::io::{prelude::*, Error};
 
+#[derive(Debug)]
+enum GitObjects {
+    Tree,
+    Blob,
+}
+
+#[derive(Debug)]
+struct TreeEntry {
+    mode: String,
+    file_type: GitObjects,
+    sha_hash: Vec<u8>,
+    file_name: String,
+}
+
 pub struct Git {}
 
 impl Git {
@@ -69,7 +83,7 @@ impl Git {
         }
 
         match args[2].as_str() {
-            "--name_only" => {
+            "--name-only" => {
                 if let Some(tree_sha) = args.get(3) {
                     Git::read_tree_object(tree_sha);
                 } else {
@@ -94,7 +108,7 @@ impl Git {
 
     fn read_blob_object(file_name: &str) {
         let file_path = Git::get_object_path_from_hash(file_name);
-        if let Ok(mut file_content) = Self::decode_object_file(&file_path) {
+        if let Ok(mut file_content) = Self::decode_object_file_to_string(&file_path) {
             if let Some(split_point) = file_content.find('\0') {
                 let content = file_content.split_off(split_point + 1); // don't include \0
                 print!("{content}");
@@ -123,8 +137,36 @@ impl Git {
 
     fn read_tree_object(tree_hash: &str) {
         let file_path = Git::get_object_path_from_hash(tree_hash);
-        if let Ok(file_content) = Self::decode_object_file(&file_path) {
-            println!("{file_content}");
+        let mut objects: Vec<TreeEntry> = Vec::new();
+        if let Ok(file_content) = Self::decode_object_file_to_bytes(&file_path) {
+            let mut starting_byte = 0;
+            for (idx, bt) in file_content.iter().enumerate() {
+                if *bt == b'\0' {
+                    starting_byte = idx + 1;
+                    break;
+                }
+            }
+
+            while starting_byte < file_content.len() {
+                let (_starting_byte, new_object) =
+                    Git::parse_tree_object_row(starting_byte, &file_content).unwrap();
+                starting_byte = _starting_byte;
+                objects.push(new_object);
+                if let Ok((_starting_byte, new_object)) =
+                    Git::parse_tree_object_row(starting_byte, &file_content)
+                {
+                    objects.push(new_object);
+                    starting_byte = _starting_byte;
+                } else {
+                    println!("{file_path} isn't a proper tree file");
+                    break;
+                }
+                // break;
+            }
+
+            for obj in objects {
+                println!("{:?}", obj);
+            }
         } else {
             println!("Unable to read object file {tree_hash}");
         }
@@ -134,12 +176,20 @@ impl Git {
 
     // region: helper functions
 
-    fn decode_object_file(file_path: &str) -> Result<String, Error> {
+    fn decode_object_file_to_bytes(file_path: &str) -> Result<Vec<u8>, Error> {
         let file_content = fs::read(file_path)?;
         let mut decoder = ZlibDecoder::new(&file_content[..]);
-        let mut s = String::new();
-        decoder.read_to_string(&mut s).unwrap();
-        return Ok(s);
+        let mut bytes_to_read = Vec::new();
+        decoder.read_to_end(&mut bytes_to_read)?;
+        return Ok(bytes_to_read);
+    }
+
+    fn decode_object_file_to_string(file_path: &str) -> Result<String, Error> {
+        let file_content = fs::read(file_path)?;
+        let mut decoder = ZlibDecoder::new(&file_content[..]);
+        let mut string_to_read = String::new();
+        decoder.read_to_string(&mut string_to_read)?;
+        return Ok(string_to_read);
     }
 
     fn get_object_path_from_hash(hash: &str) -> String {
@@ -179,6 +229,51 @@ impl Git {
         } else {
             println!("Error creating blob object");
         }
+    }
+
+    fn parse_tree_object_row(
+        starting_byte: usize,
+        bytes: &Vec<u8>,
+    ) -> Result<(usize, TreeEntry), Error> {
+        let mut end_mode_byte = starting_byte;
+        for (idx, bt) in bytes[starting_byte..].iter().enumerate() {
+            if *bt == b' ' {
+                end_mode_byte = starting_byte + (idx - 1);
+                break;
+            }
+        }
+        let mut mode = String::new();
+        (&bytes[(starting_byte)..=(end_mode_byte)]).read_to_string(&mut mode)?;
+
+        let start_name_byte = end_mode_byte + 2;
+        let mut end_name_byte = start_name_byte;
+
+        for (idx, bt) in bytes[start_name_byte..].iter().enumerate() {
+            if *bt == b'\0' {
+                end_name_byte = start_name_byte + (idx - 1);
+                break;
+            }
+        }
+
+        let mut name = String::new();
+        (&bytes[start_name_byte..=end_name_byte]).read_to_string(&mut name)?;
+
+        let sha_hash = &bytes[(end_name_byte + 1)..=(end_name_byte + 20)];
+
+        let file_type = match mode.as_str() {
+            "40000" => GitObjects::Tree,
+            _ => GitObjects::Blob,
+        };
+
+        return Ok((
+            end_name_byte + 22,
+            TreeEntry {
+                mode,
+                file_name: name,
+                file_type,
+                sha_hash: sha_hash.to_vec(),
+            },
+        ));
     }
 
     // endregions
