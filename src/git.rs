@@ -4,7 +4,7 @@ use flate2::Compression;
 use hex;
 use sha1::{Digest, Sha1};
 use std::fs;
-use std::io::prelude::*;
+use std::io::{prelude::*, Error};
 
 pub struct Git {}
 
@@ -21,6 +21,7 @@ impl Git {
             "init" => Git::init_git_directory(),
             "cat-file" => Git::parse_cat_file_args(args),
             "hash-object" => Git::parse_hash_object_args(args),
+            "ls-tree" => Git::parse_ls_tree_args(args),
             _ => println!("unknown command: {}", args[1]),
         }
     }
@@ -61,6 +62,24 @@ impl Git {
         }
     }
 
+    fn parse_ls_tree_args(args: Vec<String>) {
+        if args.len() < 2 {
+            println!("No arguments given.");
+            return;
+        }
+
+        match args[2].as_str() {
+            "--name_only" => {
+                if let Some(tree_sha) = args.get(3) {
+                    Git::read_tree_object(tree_sha);
+                } else {
+                    println!("ls-tree --name_only is lacking the 'tree_sha' argument.");
+                }
+            }
+            _ => println!("unknown command: ls-tree {}", args[2]),
+        }
+    }
+
     // endregion
 
     // region: git actions
@@ -75,18 +94,15 @@ impl Git {
 
     fn read_blob_object(file_name: &str) {
         let file_path = Git::get_object_path_from_hash(file_name);
-        if let Ok(file_content) = fs::read(file_path) {
-            let mut decoder = ZlibDecoder::new(&file_content[..]);
-            let mut s = String::new();
-            decoder.read_to_string(&mut s).unwrap();
-            if let Some(split_point) = s.find('\0') {
-                let content = s.split_off(split_point + 1); // don't include \0
+        if let Ok(mut file_content) = Self::decode_object_file(&file_path) {
+            if let Some(split_point) = file_content.find('\0') {
+                let content = file_content.split_off(split_point + 1); // don't include \0
                 print!("{content}");
             } else {
                 println!("File {file_name} isn't a proper file");
             }
         } else {
-            println!("Unable to read file {file_name}");
+            println!("Unable to read object file {file_name}");
         }
     }
 
@@ -105,9 +121,26 @@ impl Git {
         }
     }
 
+    fn read_tree_object(tree_hash: &str) {
+        let file_path = Git::get_object_path_from_hash(tree_hash);
+        if let Ok(file_content) = Self::decode_object_file(&file_path) {
+            println!("{file_content}");
+        } else {
+            println!("Unable to read object file {tree_hash}");
+        }
+    }
+
     // endregion
 
     // region: helper functions
+
+    fn decode_object_file(file_path: &str) -> Result<String, Error> {
+        let file_content = fs::read(file_path)?;
+        let mut decoder = ZlibDecoder::new(&file_content[..]);
+        let mut s = String::new();
+        decoder.read_to_string(&mut s).unwrap();
+        return Ok(s);
+    }
 
     fn get_object_path_from_hash(hash: &str) -> String {
         let folder_name = Git::get_object_dir_name_from_hash(hash);
