@@ -1,7 +1,7 @@
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use hex;
+use hex::{self};
 use sha1::{Digest, Sha1};
 use std::fs;
 use std::io::{prelude::*, Error};
@@ -85,7 +85,7 @@ impl Git {
         match args[2].as_str() {
             "--name-only" => {
                 if let Some(tree_sha) = args.get(3) {
-                    Git::read_tree_object(tree_sha);
+                    Git::read_tree_object(tree_sha, true);
                 } else {
                     println!("ls-tree --name_only is lacking the 'tree_sha' argument.");
                 }
@@ -135,7 +135,7 @@ impl Git {
         }
     }
 
-    fn read_tree_object(tree_hash: &str) {
+    fn read_tree_object(tree_hash: &str, name_only: bool) {
         let file_path = Git::get_object_path_from_hash(tree_hash);
         let mut objects: Vec<TreeEntry> = Vec::new();
         if let Ok(file_content) = Self::decode_object_file_to_bytes(&file_path) {
@@ -164,11 +164,36 @@ impl Git {
                 // break;
             }
 
-            for obj in objects {
-                println!("{:?}", obj);
-            }
+            Git::print_tree_objects(objects, name_only);
         } else {
             println!("Unable to read object file {tree_hash}");
+        }
+    }
+
+    // endregion
+
+    // region: pretty priting function
+
+    fn print_tree_objects(objs: Vec<TreeEntry>, name_only: bool) {
+        if name_only {
+            for obj in objs {
+                println!("{}", obj.file_name);
+            }
+        } else {
+            for obj in objs {
+                let mut s = format!("{}", obj.mode);
+                match obj.file_type {
+                    GitObjects::Tree => {
+                        s = format!("{s} tree");
+                    }
+                    GitObjects::Blob => {
+                        s = format!("{s} blob");
+                    }
+                }
+                s = format!("{s} {}", hex::encode(obj.sha_hash));
+                s = format!("{s} {}", obj.file_name);
+                println!("{s}");
+            }
         }
     }
 
