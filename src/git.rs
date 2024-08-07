@@ -36,6 +36,7 @@ impl Git {
             "cat-file" => Git::parse_cat_file_args(args),
             "hash-object" => Git::parse_hash_object_args(args),
             "ls-tree" => Git::parse_ls_tree_args(args),
+            // "write-tree" => Git::parse_write_tree(args),
             _ => println!("unknown command: {}", args[1]),
         }
     }
@@ -190,8 +191,7 @@ impl Git {
                         s = format!("{s} blob");
                     }
                 }
-                s = format!("{s} {}", hex::encode(obj.sha_hash));
-                s = format!("{s} {}", obj.file_name);
+                s = format!("{s} {} {}", hex::encode(obj.sha_hash), obj.file_name);
                 println!("{s}");
             }
         }
