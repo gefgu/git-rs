@@ -26,7 +26,8 @@ impl Git {
     // region: parsing
 
     pub fn parse_args(args: Vec<String>) {
-        if args.len() < 1 {
+        println!("{:?}", args);
+        if args.len() < 2 {
             println!("No arguments given.");
             return;
         }
