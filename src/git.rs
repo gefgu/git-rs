@@ -3,7 +3,8 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use hex::{self};
 use sha1::{Digest, Sha1};
-use std::fs;
+use std::env::current_dir;
+use std::fs::{self, canonicalize};
 use std::io::{prelude::*, Error};
 
 #[derive(Debug)]
@@ -26,7 +27,6 @@ impl Git {
     // region: parsing
 
     pub fn parse_args(args: Vec<String>) {
-        println!("{:?}", args);
         if args.len() < 2 {
             println!("No arguments given.");
             return;
@@ -101,11 +101,18 @@ impl Git {
     // region: git actions
 
     fn init_git_directory() {
-        fs::create_dir(".git").unwrap();
-        fs::create_dir(".git/objects").unwrap();
-        fs::create_dir(".git/refs").unwrap();
-        fs::write(".git/HEAD", "ref: refs/heads/main\n").unwrap();
-        println!("Initialized git directory")
+        let wdir = current_dir().unwrap();
+        let wdir = canonicalize(wdir).unwrap();
+
+        let result = fs::create_dir(".git")
+            .and_then(|_| fs::create_dir(".git/objects"))
+            .and_then(|_| fs::create_dir(".git/refs"))
+            .and_then(|_| fs::write(".git/HEAD", "ref: refs/heads/main\n"))
+            .map_or_else(
+                |_| String::from("Initialized empty Git directory in"),
+                |_| String::from("Reinitialized existing Git repository in"),
+            );
+        println!("{} {}", result, wdir.to_str().unwrap_or_default());
     }
 
     fn read_blob_object(file_name: &str) {

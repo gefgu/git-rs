@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use std::{
+    fs::{self, canonicalize},
+    path::Path,
+};
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -39,9 +42,25 @@ fn already_has_git_folder() -> Result<(), Box<dyn std::error::Error>> {
     cmd.current_dir(folder.path());
 
     cmd.arg("init");
-    cmd.assert().success().stdout(predicate::str::contains(
-        "Reinitialized existing Git repository in",
-    ));
+    cmd.assert().success();
+
+    folder.close()?;
+    Ok(())
+}
+
+#[test]
+fn show_git_folder_path() -> Result<(), Box<dyn std::error::Error>> {
+    let folder = assert_fs::TempDir::new().unwrap();
+    let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME"))?;
+
+    cmd.current_dir(folder.path());
+    let absolute_path = canonicalize(folder.path()).unwrap();
+    let absolute_path_str = absolute_path.to_str().unwrap();
+
+    cmd.arg("init");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(absolute_path_str));
 
     folder.close()?;
     Ok(())

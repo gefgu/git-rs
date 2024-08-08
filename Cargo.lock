@@ -403,7 +403,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-rs"
+name = "git-starter-rust"
 version = "0.1.0"
 dependencies = [
  "anyhow",
